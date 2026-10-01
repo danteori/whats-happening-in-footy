@@ -54,7 +54,9 @@ frontend/           what the browser loads, served as-is
   app.js
   style.css
 render.yaml         Render deployment blueprint
-.github/workflows/  CI: fmt, clippy, tests
+scripts/            Render build/start scripts (incl. joining the tailnet)
+docs/               longer guides, e.g. tailnet.md
+.github/workflows/  CI: fmt, clippy, tests, Render script smoke test
 ```
 
 ## Deploy
@@ -63,6 +65,9 @@ render.yaml         Render deployment blueprint
 Render dashboard choose **New → Blueprint**, pick this repo, and Render builds and deploys it on
 every push to `main`. The free plan sleeps after 15 minutes without traffic, so the first visit
 after that takes about a minute.
+
+**Optional:** the Render server can join a private [Tailscale](https://tailscale.com) network,
+so it can reach a database hosted on a home PC. See [docs/tailnet.md](docs/tailnet.md).
 
 ## Contributing
 

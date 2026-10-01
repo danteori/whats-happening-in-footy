@@ -3,9 +3,13 @@ services:
     name: whats-happening-in-footy
     runtime: rust
     plan: free
-    buildCommand: cargo build --release --locked
-    startCommand: ./target/release/backend
+    buildCommand: bash scripts/render-build.sh
+    startCommand: bash scripts/render-start.sh
     healthCheckPath: /healthz
     envVars:
       - key: HOST
         value: 0.0.0.0
+      # Optional: a Tailscale OAuth client secret. Set it in the Render dashboard;
+      # see docs/tailnet.md. Without it the site runs without joining the tailnet.
+      - key: TS_AUTHKEY
+        sync: false

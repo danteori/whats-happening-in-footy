@@ -17,3 +17,18 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+
+  render-scripts:
+    # Runs Render's build/start scripts the way Render does: Linux, non-root, no TUN device.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: shellcheck scripts/*.sh
+      - run: bash scripts/render-build.sh
+      - name: Start with a bogus Tailscale key (the site must still come up)
+        run: |
+          TS_AUTHKEY=tskey-client-bogus PORT=10000 bash scripts/render-start.sh &
+          curl -fsS --retry 45 --retry-delay 2 --retry-all-errors http://127.0.0.1:10000/healthz
+          test -S /tmp/tailscaled.sock # tailscaled ran unprivileged in userspace mode
