@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: whats-happening-in-footy
+    runtime: rust
+    plan: free
+    buildCommand: cargo build --release --locked
+    startCommand: ./target/release/backend
+    healthCheckPath: /healthz
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
