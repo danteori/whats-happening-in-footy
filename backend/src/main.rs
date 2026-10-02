@@ -1,27 +1,6 @@
 use std::{env, path::PathBuf};
 
-use axum::{Json, Router, routing::get};
-use serde::Serialize;
-use tower_http::services::ServeDir;
-
-#[derive(Serialize)]
-struct Hello {
-    message: &'static str,
-}
-
-async fn hello() -> Json<Hello> {
-    Json(Hello {
-        message: "Hello, world! (from the Rust backend)",
-    })
-}
-
-/// API routes live under `/api`; every other path is served from the frontend folder.
-fn app(frontend_dir: PathBuf) -> Router {
-    Router::new()
-        .route("/api/hello", get(hello))
-        .route("/healthz", get(|| async { "ok" }))
-        .fallback_service(ServeDir::new(frontend_dir))
-}
+use backend::app;
 
 #[tokio::main]
 async fn main() {
@@ -41,24 +20,4 @@ async fn main() {
     axum::serve(listener, app(frontend_dir))
         .await
         .expect("server error");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::{body::Body, http::Request};
-    use http_body_util::BodyExt;
-    use tower::ServiceExt;
-
-    #[tokio::test]
-    async fn hello_returns_greeting() {
-        let response = app(PathBuf::from("../frontend"))
-            .oneshot(Request::get("/api/hello").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-
-        assert!(response.status().is_success());
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        assert!(String::from_utf8_lossy(&body).contains("Hello, world!"));
-    }
 }
