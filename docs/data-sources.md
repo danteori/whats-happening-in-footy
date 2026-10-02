@@ -235,7 +235,7 @@ find in a GitHub issue.
 
 | Source | Limit | How the app stays inside it |
 | --- | --- | --- |
-| football-data.org | 10 requests a minute | The cache keeps each response for up to 10 minutes. During a match it keeps them for 60 seconds. One page view makes at most 2 requests. |
+| football-data.org | 10 requests a minute | The cache keeps each response for up to 10 minutes. During a match it keeps them for 60 seconds. One page view makes at most 3 requests: matches, table, and scorers. |
 | Highlightly | 100 requests a day, reset at 00:00 UTC | The app counts its calls in each UTC day and stops at 90. It asks only once for each finished match. |
 
 ## Cache rules
