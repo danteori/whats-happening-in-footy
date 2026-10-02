@@ -10,6 +10,7 @@ use crate::domain::{Match, MatchEvent, MatchLineups, MatchStatus};
 
 pub const LIVE_TTL: Duration = Duration::from_secs(60);
 pub const IDLE_TTL: Duration = Duration::from_secs(10 * 60);
+pub const ERROR_TTL: Duration = Duration::from_secs(60);
 pub const DATE_LOOKUP_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 pub const UNCONFIRMED_TTL: Duration = Duration::from_secs(30 * 60);
 const MATCH_WINDOW: TimeDelta = TimeDelta::minutes(150);

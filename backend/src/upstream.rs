@@ -15,7 +15,7 @@ pub const USER_AGENT: &str = concat!(
     " (+https://github.com/danteori/whats-happening-in-footy)"
 );
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum SourceError {
     #[error("the request to {source_name} failed: {detail}")]
     Request {

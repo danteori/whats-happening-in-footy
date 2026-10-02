@@ -8,8 +8,8 @@ use tokio::sync::Mutex;
 use crate::{
     budget::{BudgetExhausted, DailyBudget},
     cache::{
-        DATE_LOOKUP_TTL, Expiring, ExpiringMap, Lifetime, events_lifetime, lineups_lifetime,
-        match_data_ttl,
+        DATE_LOOKUP_TTL, ERROR_TTL, Expiring, ExpiringMap, Lifetime, events_lifetime,
+        lineups_lifetime, match_data_ttl,
     },
     clubs::UnknownTeam,
     config::{Config, FOOTBALL_DATA_API_KEY, HIGHLIGHTLY_API_KEY},
@@ -53,9 +53,9 @@ pub struct DataService {
 struct Inner {
     football_data: Option<FootballDataClient>,
     highlightly: Option<HighlightlyClient>,
-    matches: Mutex<Expiring<Vec<Match>>>,
-    table: Mutex<Expiring<TableReport>>,
-    scorers: Mutex<Expiring<Vec<Scorer>>>,
+    matches: Mutex<Expiring<Result<Vec<Match>, SourceError>>>,
+    table: Mutex<Expiring<Result<TableReport, SourceError>>>,
+    scorers: Mutex<Expiring<Result<Vec<Scorer>, SourceError>>>,
     post_match: Mutex<PostMatchData>,
 }
 
@@ -221,18 +221,21 @@ impl DataService {
 }
 
 async fn cached<T: Clone>(
-    slot: &Mutex<Expiring<T>>,
+    slot: &Mutex<Expiring<Result<T, SourceError>>>,
     fetch: impl Future<Output = Result<T, SourceError>>,
     ttl: impl FnOnce(&T) -> Duration,
 ) -> Result<T, ServiceError> {
     let mut slot = slot.lock().await;
-    if let Some(value) = slot.get(Instant::now()) {
-        return Ok(value);
+    if let Some(result) = slot.get(Instant::now()) {
+        return Ok(result?);
     }
-    let value = fetch.await?;
-    let ttl = ttl(&value);
-    slot.set(value.clone(), Lifetime::For(ttl), Instant::now());
-    Ok(value)
+    let result = fetch.await;
+    let ttl = match &result {
+        Ok(value) => ttl(value),
+        Err(_) => ERROR_TTL,
+    };
+    slot.set(result.clone(), Lifetime::For(ttl), Instant::now());
+    Ok(result?)
 }
 
 async fn spend<T>(

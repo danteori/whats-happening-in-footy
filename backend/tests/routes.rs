@@ -47,6 +47,7 @@ const HL_EMPTY_LINEUPS: &str = r#"{
 struct Upstream {
     hits: Arc<Mutex<Vec<String>>>,
     football_data_fails: bool,
+    football_data_failing_resource: Option<&'static str>,
     highlightly_remaining: Option<u32>,
     highlightly_rate_limited: bool,
 }
@@ -84,7 +85,9 @@ async fn football_data(
     Path(resource): Path<String>,
     headers: HeaderMap,
 ) -> Response {
-    if upstream.football_data_fails {
+    if upstream.football_data_fails
+        || upstream.football_data_failing_resource == Some(resource.as_str())
+    {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     if !has_key(&headers, "x-auth-token", FOOTBALL_DATA_KEY) {
@@ -642,4 +645,49 @@ async fn a_highlightly_429_stops_calls_until_the_next_day() {
             .contains("limit is used up")
     );
     assert_eq!(upstream.hits_with_prefix("/hl/"), 1);
+}
+
+#[tokio::test]
+async fn a_football_data_error_is_remembered_for_its_resource() {
+    let (app, upstream) = Setup {
+        upstream: Upstream {
+            football_data_fails: true,
+            ..Upstream::default()
+        },
+        ..Setup::default()
+    }
+    .start()
+    .await;
+
+    for uri in ["/api/matches", "/api/matches", "/api/table", "/api/scorers"] {
+        let (status, _) = get_json(&app, uri).await;
+
+        assert_eq!(status, StatusCode::BAD_GATEWAY, "{uri}");
+    }
+    assert_eq!(upstream.hits_with_prefix("/fd/"), 1);
+}
+
+#[tokio::test]
+async fn a_remembered_error_affects_only_its_resource() {
+    let (app, upstream) = Setup {
+        upstream: Upstream {
+            football_data_failing_resource: Some("standings"),
+            ..Upstream::default()
+        },
+        ..Setup::default()
+    }
+    .start()
+    .await;
+
+    let (first_table, _) = get_json(&app, "/api/table").await;
+    let (second_table, _) = get_json(&app, "/api/table").await;
+    let (matches, _) = get_json(&app, "/api/matches").await;
+    let (scorers, _) = get_json(&app, "/api/scorers").await;
+
+    assert_eq!(
+        (first_table, second_table),
+        (StatusCode::BAD_GATEWAY, StatusCode::BAD_GATEWAY)
+    );
+    assert_eq!((matches, scorers), (StatusCode::OK, StatusCode::OK));
+    assert_eq!(upstream.hits("/fd/competitions/PL/standings"), 1);
 }
