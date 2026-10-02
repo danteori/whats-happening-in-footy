@@ -19,7 +19,7 @@ use crate::{
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceError {
-    #[error("set the environment variable {} to use this route", .0.join(" and "))]
+    #[error("set {} in the server environment to use this route", .0.join(" and "))]
     MissingKeys(Vec<&'static str>),
     #[error(transparent)]
     Source(#[from] SourceError),
