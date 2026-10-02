@@ -2,6 +2,7 @@ use std::{
     net::SocketAddr,
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use axum::{
@@ -29,6 +30,8 @@ const FINISHED_MATCH: u64 = 560050;
 const OTHER_FINISHED_MATCH_SAME_DAY: u64 = 560047;
 const FUTURE_MATCH: u64 = 560051;
 const MATCH_WITH_EMPTY_DATA: u64 = 560048;
+const MATCH_WITH_SLOW_EVENTS: u64 = 560049;
+const SLOW_ANSWER: Duration = Duration::from_secs(3);
 const FIRST_MATCH_ON_UNLISTED_DATE: u64 = 560042;
 const SECOND_MATCH_ON_UNLISTED_DATE: u64 = 560043;
 
@@ -137,6 +140,10 @@ async fn highlightly_match_data(
         ("events", 1180004) => json(HL_EVENTS),
         ("lineups", 1180002) => json(HL_EMPTY_LINEUPS),
         ("events", 1180002) => json("[]"),
+        ("events", 1180003) => {
+            tokio::time::sleep(SLOW_ANSWER).await;
+            StatusCode::NOT_FOUND.into_response()
+        }
         _ => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -740,4 +747,53 @@ async fn a_match_id_that_is_not_a_number_answers_404_json() {
         );
     }
     assert_eq!(upstream.hits_with_prefix("/"), 0);
+}
+
+#[tokio::test]
+async fn a_cached_answer_does_not_wait_for_a_slow_upstream() {
+    let (app, upstream) = Setup::default().start().await;
+    get_json(&app, &lineups_uri(FINISHED_MATCH)).await;
+
+    let slow_app = app.clone();
+    let slow_request =
+        tokio::spawn(async move { get_json(&slow_app, &events_uri(MATCH_WITH_SLOW_EVENTS)).await });
+    while upstream.hits("/hl/events/1180003") == 0 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let start = Instant::now();
+    let (status, _) = get_json(&app, &lineups_uri(FINISHED_MATCH)).await;
+    let waited = start.elapsed();
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(waited < Duration::from_secs(1), "waited {waited:?}");
+    assert_eq!(slow_request.await.unwrap().0, StatusCode::BAD_GATEWAY);
+}
+
+#[tokio::test]
+async fn parallel_requests_make_each_highlightly_call_once() {
+    let (app, upstream) = Setup {
+        budget: 3,
+        ..Setup::default()
+    }
+    .start()
+    .await;
+
+    let requests: Vec<_> = (0..8)
+        .map(|index| {
+            let app = app.clone();
+            let uri = if index % 2 == 0 {
+                lineups_uri(FINISHED_MATCH)
+            } else {
+                events_uri(FINISHED_MATCH)
+            };
+            tokio::spawn(async move { get_json(&app, &uri).await.0 })
+        })
+        .collect();
+    for request in requests {
+        assert_eq!(request.await.unwrap(), StatusCode::OK);
+    }
+
+    assert_eq!(upstream.hits("/hl/matches"), 1);
+    assert_eq!(upstream.hits("/hl/lineups/1180004"), 1);
+    assert_eq!(upstream.hits("/hl/events/1180004"), 1);
 }

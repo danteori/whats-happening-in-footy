@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::Duration, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex as StdMutex, MutexGuard},
+    time::{Duration, Instant},
+};
 
 use chrono::{NaiveDate, Utc};
 use reqwest::Client;
@@ -56,17 +60,18 @@ struct Inner {
     matches: Mutex<Expiring<Result<Vec<Match>, SourceError>>>,
     table: Mutex<Expiring<Result<TableReport, SourceError>>>,
     scorers: Mutex<Expiring<Result<Vec<Scorer>, SourceError>>>,
-    post_match: Mutex<PostMatchData>,
+    post_match: StdMutex<PostMatchCache>,
+    highlightly_calls: Mutex<DailyBudget>,
 }
 
-struct LinkedMatch {
+struct FinishedMatch {
     fixture: Match,
-    highlightly_id: u64,
+    season: Vec<Match>,
 }
 
-struct PostMatchData {
-    budget: DailyBudget,
-    highlightly_ids: HashMap<u64, u64>,
+#[derive(Default)]
+struct PostMatchCache {
+    links: HashMap<u64, u64>,
     date_lookups: ExpiringMap<NaiveDate, Vec<UnknownTeam>>,
     lineups: ExpiringMap<u64, MatchLineups>,
     events: ExpiringMap<u64, Vec<MatchEvent>>,
@@ -89,13 +94,8 @@ impl DataService {
                 matches: Mutex::default(),
                 table: Mutex::default(),
                 scorers: Mutex::default(),
-                post_match: Mutex::new(PostMatchData {
-                    budget: DailyBudget::new(config.highlightly_daily_budget),
-                    highlightly_ids: HashMap::new(),
-                    date_lookups: ExpiringMap::default(),
-                    lineups: ExpiringMap::default(),
-                    events: ExpiringMap::default(),
-                }),
+                post_match: StdMutex::default(),
+                highlightly_calls: Mutex::new(DailyBudget::new(config.highlightly_daily_budget)),
             }),
         }
     }
@@ -130,40 +130,63 @@ impl DataService {
 
     pub async fn lineups(&self, match_id: u64) -> Result<MatchLineups, ServiceError> {
         let client = self.post_match_client()?;
-        let mut data = self.inner.post_match.lock().await;
-        if let Some(lineups) = data.lineups.get(&match_id, Instant::now()) {
-            return Ok(lineups);
-        }
-        let linked = self.linked_match(&mut data, client, match_id).await?;
-        let lineups = spend(&mut data.budget, client.lineups(linked.highlightly_id)).await?;
-        let lifetime = lineups_lifetime(&lineups);
-        data.lineups
-            .insert(match_id, lineups.clone(), lifetime, Instant::now());
-        Ok(lineups)
+        self.post_match_data(
+            client,
+            match_id,
+            |cache| &mut cache.lineups,
+            |highlightly_id| client.lineups(highlightly_id),
+            |lineups, _| lineups_lifetime(lineups),
+        )
+        .await
     }
 
     pub async fn events(&self, match_id: u64) -> Result<Vec<MatchEvent>, ServiceError> {
         let client = self.post_match_client()?;
-        let mut data = self.inner.post_match.lock().await;
-        if let Some(events) = data.events.get(&match_id, Instant::now()) {
-            return Ok(events);
-        }
-        let linked = self.linked_match(&mut data, client, match_id).await?;
-        let events = spend(&mut data.budget, client.events(linked.highlightly_id)).await?;
-        let lifetime = events_lifetime(&events, &linked.fixture);
-        data.events
-            .insert(match_id, events.clone(), lifetime, Instant::now());
-        Ok(events)
+        self.post_match_data(
+            client,
+            match_id,
+            |cache| &mut cache.events,
+            |highlightly_id| client.events(highlightly_id),
+            |events, fixture| events_lifetime(events, fixture),
+        )
+        .await
     }
 
-    async fn linked_match(
+    async fn post_match_data<T: Clone, F: Future<Output = Quoted<T>>>(
         &self,
-        data: &mut PostMatchData,
         client: &HighlightlyClient,
         match_id: u64,
-    ) -> Result<LinkedMatch, ServiceError> {
-        let matches = self.matches().await?;
-        let fixture = matches
+        slot: fn(&mut PostMatchCache) -> &mut ExpiringMap<u64, T>,
+        fetch: impl FnOnce(u64) -> F,
+        lifetime: impl FnOnce(&T, &Match) -> Lifetime,
+    ) -> Result<T, ServiceError> {
+        let cached =
+            |service: &Self| slot(&mut service.post_match_cache()).get(&match_id, Instant::now());
+        if let Some(value) = cached(self) {
+            return Ok(value);
+        }
+        let finished = self.finished_match(match_id).await?;
+        let mut budget = self.inner.highlightly_calls.lock().await;
+        if let Some(value) = cached(self) {
+            return Ok(value);
+        }
+        let highlightly_id = self
+            .linked_highlightly_id(&mut budget, client, &finished)
+            .await?;
+        let value = spend(&mut budget, fetch(highlightly_id)).await?;
+        let lifetime = lifetime(&value, &finished.fixture);
+        slot(&mut self.post_match_cache()).insert(
+            match_id,
+            value.clone(),
+            lifetime,
+            Instant::now(),
+        );
+        Ok(value)
+    }
+
+    async fn finished_match(&self, match_id: u64) -> Result<FinishedMatch, ServiceError> {
+        let season = self.matches().await?;
+        let fixture = season
             .iter()
             .find(|fixture| fixture.id == match_id)
             .cloned()
@@ -171,20 +194,33 @@ impl DataService {
         if fixture.status != MatchStatus::Finished {
             return Err(ServiceError::MatchNotFinished(match_id));
         }
-        if let Some(&highlightly_id) = data.highlightly_ids.get(&match_id) {
-            return Ok(LinkedMatch {
-                fixture,
-                highlightly_id,
-            });
+        Ok(FinishedMatch { fixture, season })
+    }
+
+    async fn linked_highlightly_id(
+        &self,
+        budget: &mut DailyBudget,
+        client: &HighlightlyClient,
+        finished: &FinishedMatch,
+    ) -> Result<u64, ServiceError> {
+        let match_id = finished.fixture.id;
+        let known_link = self.post_match_cache().links.get(&match_id).copied();
+        if let Some(highlightly_id) = known_link {
+            return Ok(highlightly_id);
         }
-        let date = fixture.kickoff.date_naive();
-        let unknown_teams = match data.date_lookups.get(&date, Instant::now()) {
+        let date = finished.fixture.kickoff.date_naive();
+        let remembered_lookup = self
+            .post_match_cache()
+            .date_lookups
+            .get(&date, Instant::now());
+        let unknown_teams = match remembered_lookup {
             Some(unknown_teams) => unknown_teams,
             None => {
-                let others = spend(&mut data.budget, client.matches_on(date)).await?;
-                let links = link_matches(&matches, &others);
-                data.highlightly_ids.extend(links.pairs);
-                data.date_lookups.insert(
+                let others = spend(budget, client.matches_on(date)).await?;
+                let links = link_matches(&finished.season, &others);
+                let mut cache = self.post_match_cache();
+                cache.links.extend(links.pairs);
+                cache.date_lookups.insert(
                     date,
                     links.unknown_teams.clone(),
                     Lifetime::For(DATE_LOOKUP_TTL),
@@ -193,16 +229,18 @@ impl DataService {
                 links.unknown_teams
             }
         };
-        if let Some(&highlightly_id) = data.highlightly_ids.get(&match_id) {
-            return Ok(LinkedMatch {
-                fixture,
-                highlightly_id,
-            });
-        }
-        Err(match unknown_teams.into_iter().next() {
+        let new_link = self.post_match_cache().links.get(&match_id).copied();
+        new_link.ok_or_else(|| match unknown_teams.into_iter().next() {
             Some(unknown) => SourceError::from(unknown).into(),
             None => ServiceError::NoLinkedMatch(match_id),
         })
+    }
+
+    fn post_match_cache(&self) -> MutexGuard<'_, PostMatchCache> {
+        self.inner
+            .post_match
+            .lock()
+            .expect("no thread panics while it holds the post-match cache")
     }
 
     fn football_data(&self) -> Result<&FootballDataClient, ServiceError> {
