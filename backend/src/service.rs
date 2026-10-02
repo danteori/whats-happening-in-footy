@@ -7,7 +7,11 @@ use tokio::sync::Mutex;
 
 use crate::{
     budget::{BudgetExhausted, DailyBudget},
-    cache::{Expiring, match_data_ttl},
+    cache::{
+        DATE_LOOKUP_TTL, Expiring, ExpiringMap, Lifetime, events_lifetime, lineups_lifetime,
+        match_data_ttl,
+    },
+    clubs::UnknownTeam,
     config::{Config, FOOTBALL_DATA_API_KEY, HIGHLIGHTLY_API_KEY},
     domain::{Match, MatchEvent, MatchLineups, MatchStatus, Scorer, TableRow},
     football_data::FootballDataClient,
@@ -58,8 +62,9 @@ struct Inner {
 struct PostMatchData {
     budget: DailyBudget,
     highlightly_ids: HashMap<u64, u64>,
-    lineups: HashMap<u64, MatchLineups>,
-    events: HashMap<u64, Vec<MatchEvent>>,
+    date_lookups: ExpiringMap<NaiveDate, Vec<UnknownTeam>>,
+    lineups: ExpiringMap<u64, MatchLineups>,
+    events: ExpiringMap<u64, Vec<MatchEvent>>,
 }
 
 impl DataService {
@@ -82,8 +87,9 @@ impl DataService {
                 post_match: Mutex::new(PostMatchData {
                     budget: DailyBudget::new(config.highlightly_daily_budget),
                     highlightly_ids: HashMap::new(),
-                    lineups: HashMap::new(),
-                    events: HashMap::new(),
+                    date_lookups: ExpiringMap::default(),
+                    lineups: ExpiringMap::default(),
+                    events: ExpiringMap::default(),
                 }),
             }),
         }
@@ -120,34 +126,34 @@ impl DataService {
     pub async fn lineups(&self, match_id: u64) -> Result<MatchLineups, ServiceError> {
         let client = self.post_match_client()?;
         let mut data = self.inner.post_match.lock().await;
-        if let Some(lineups) = data.lineups.get(&match_id) {
-            return Ok(lineups.clone());
+        if let Some(lineups) = data.lineups.get(&match_id, Instant::now()) {
+            return Ok(lineups);
         }
         let highlightly_id = self
             .linked_highlightly_id(&mut data, client, match_id)
             .await?;
         data.budget.try_spend(today())?;
         let lineups = client.lineups(highlightly_id).await?;
-        if lineups.is_complete() {
-            data.lineups.insert(match_id, lineups.clone());
-        }
+        let lifetime = lineups_lifetime(&lineups);
+        data.lineups
+            .insert(match_id, lineups.clone(), lifetime, Instant::now());
         Ok(lineups)
     }
 
     pub async fn events(&self, match_id: u64) -> Result<Vec<MatchEvent>, ServiceError> {
         let client = self.post_match_client()?;
         let mut data = self.inner.post_match.lock().await;
-        if let Some(events) = data.events.get(&match_id) {
-            return Ok(events.clone());
+        if let Some(events) = data.events.get(&match_id, Instant::now()) {
+            return Ok(events);
         }
         let highlightly_id = self
             .linked_highlightly_id(&mut data, client, match_id)
             .await?;
         data.budget.try_spend(today())?;
         let events = client.events(highlightly_id).await?;
-        if !events.is_empty() {
-            data.events.insert(match_id, events.clone());
-        }
+        let lifetime = events_lifetime(&events);
+        data.events
+            .insert(match_id, events.clone(), lifetime, Instant::now());
         Ok(events)
     }
 
@@ -168,14 +174,27 @@ impl DataService {
         if let Some(id) = data.highlightly_ids.get(&match_id) {
             return Ok(*id);
         }
-        data.budget.try_spend(today())?;
-        let others = client.matches_on(fixture.kickoff.date_naive()).await?;
-        let links = link_matches(&matches, &others);
-        data.highlightly_ids.extend(links.pairs);
+        let date = fixture.kickoff.date_naive();
+        let unknown_teams = match data.date_lookups.get(&date, Instant::now()) {
+            Some(unknown_teams) => unknown_teams,
+            None => {
+                data.budget.try_spend(today())?;
+                let others = client.matches_on(date).await?;
+                let links = link_matches(&matches, &others);
+                data.highlightly_ids.extend(links.pairs);
+                data.date_lookups.insert(
+                    date,
+                    links.unknown_teams.clone(),
+                    Lifetime::For(DATE_LOOKUP_TTL),
+                    Instant::now(),
+                );
+                links.unknown_teams
+            }
+        };
         if let Some(id) = data.highlightly_ids.get(&match_id) {
             return Ok(*id);
         }
-        Err(match links.unknown_teams.into_iter().next() {
+        Err(match unknown_teams.into_iter().next() {
             Some(unknown) => SourceError::from(unknown).into(),
             None => ServiceError::NoLinkedMatch(match_id),
         })
@@ -215,7 +234,7 @@ async fn cached<T: Clone>(
     }
     let value = fetch.await?;
     let ttl = ttl(&value);
-    slot.set(value.clone(), ttl, Instant::now());
+    slot.set(value.clone(), Lifetime::For(ttl), Instant::now());
     Ok(value)
 }
 

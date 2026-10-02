@@ -28,6 +28,9 @@ const HIGHLIGHTLY_KEY: &str = "test-highlightly-key";
 const FINISHED_MATCH: u64 = 560050;
 const OTHER_FINISHED_MATCH_SAME_DAY: u64 = 560047;
 const FUTURE_MATCH: u64 = 560051;
+const MATCH_WITH_EMPTY_DATA: u64 = 560048;
+const FIRST_MATCH_ON_UNLISTED_DATE: u64 = 560042;
+const SECOND_MATCH_ON_UNLISTED_DATE: u64 = 560043;
 
 const FD_MATCHES: &str = include_str!("fixtures/football-data/matches.json");
 const FD_STANDINGS: &str = include_str!("fixtures/football-data/standings.json");
@@ -35,6 +38,10 @@ const FD_SCORERS: &str = include_str!("fixtures/football-data/scorers.json");
 const HL_MATCHES: &str = include_str!("fixtures/highlightly/matches-2026-09-20.json");
 const HL_LINEUPS: &str = include_str!("fixtures/highlightly/lineups-1180004.json");
 const HL_EVENTS: &str = include_str!("fixtures/highlightly/events-1180004.json");
+const HL_EMPTY_LINEUPS: &str = r#"{
+    "homeTeam": {"id": 4341, "name": "Leeds", "formation": null, "initialLineup": [], "substitutes": []},
+    "awayTeam": {"id": 4354, "name": "Crystal Palace", "formation": null, "initialLineup": [], "substitutes": []}
+}"#;
 
 #[derive(Clone, Default)]
 struct Upstream {
@@ -114,6 +121,8 @@ async fn highlightly_match_data(
     match (resource.as_str(), id) {
         ("lineups", 1180004) => json(HL_LINEUPS),
         ("events", 1180004) => json(HL_EVENTS),
+        ("lineups", 1180002) => json(HL_EMPTY_LINEUPS),
+        ("events", 1180002) => json("[]"),
         _ => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -509,4 +518,44 @@ async fn used_budget_stops_highlightly_calls_but_serves_cached_data() {
     assert!(error.contains("00:00 UTC"), "{error}");
     assert_eq!(cached_status, StatusCode::OK);
     assert_eq!(upstream.hits_with_prefix("/hl/"), 2);
+}
+
+#[tokio::test]
+async fn a_date_lookup_that_links_nothing_is_remembered() {
+    let (app, upstream) = Setup::default().start().await;
+
+    for uri in [
+        lineups_uri(FIRST_MATCH_ON_UNLISTED_DATE),
+        events_uri(FIRST_MATCH_ON_UNLISTED_DATE),
+        lineups_uri(SECOND_MATCH_ON_UNLISTED_DATE),
+    ] {
+        let (status, body) = get_json(&app, &uri).await;
+
+        assert_eq!(status, StatusCode::BAD_GATEWAY, "{uri}");
+        assert!(
+            body["error"].as_str().unwrap().contains("free plan"),
+            "{uri}"
+        );
+    }
+    assert_eq!(upstream.hits("/hl/matches"), 1);
+    assert_eq!(upstream.hits_with_prefix("/hl/"), 1);
+}
+
+#[tokio::test]
+async fn empty_lineups_and_events_are_remembered_for_a_while() {
+    let (app, upstream) = Setup::default().start().await;
+
+    for _ in 0..2 {
+        let (lineups_status, lineups) = get_json(&app, &lineups_uri(MATCH_WITH_EMPTY_DATA)).await;
+        let (events_status, events) = get_json(&app, &events_uri(MATCH_WITH_EMPTY_DATA)).await;
+
+        assert_eq!(
+            (lineups_status, events_status),
+            (StatusCode::OK, StatusCode::OK)
+        );
+        assert_eq!(lineups["home"]["starting_rows"], serde_json::json!([]));
+        assert_eq!(events["events"], serde_json::json!([]));
+    }
+    assert_eq!(upstream.hits("/hl/lineups/1180002"), 1);
+    assert_eq!(upstream.hits("/hl/events/1180002"), 1);
 }
