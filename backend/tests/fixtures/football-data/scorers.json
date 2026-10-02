@@ -1,0 +1,97 @@
+{
+  "count": 3,
+  "filters": {
+    "limit": 20
+  },
+  "competition": {
+    "id": 2021,
+    "name": "Premier League",
+    "code": "PL",
+    "type": "LEAGUE",
+    "emblem": "https://crests.football-data.org/PL.png"
+  },
+  "season": {
+    "id": 2501,
+    "startDate": "2026-08-21",
+    "endDate": "2027-05-30",
+    "currentMatchday": 6,
+    "winner": null
+  },
+  "scorers": [
+    {
+      "player": {
+        "id": 900001,
+        "name": "Example Striker",
+        "firstName": "Example",
+        "lastName": "Striker",
+        "dateOfBirth": "2000-01-01",
+        "nationality": "England",
+        "section": "Offence",
+        "position": null,
+        "shirtNumber": null,
+        "lastUpdated": "2026-09-22T09:00:00Z"
+      },
+      "team": {
+        "id": 65,
+        "name": "Manchester City FC",
+        "shortName": "Man City",
+        "tla": "MCI",
+        "crest": "https://crests.football-data.org/65.png"
+      },
+      "playedMatches": 5,
+      "goals": 5,
+      "assists": null,
+      "penalties": 1
+    },
+    {
+      "player": {
+        "id": 900002,
+        "name": "Sample Forward",
+        "firstName": "Sample",
+        "lastName": "Forward",
+        "dateOfBirth": "2000-01-01",
+        "nationality": "England",
+        "section": "Offence",
+        "position": null,
+        "shirtNumber": null,
+        "lastUpdated": "2026-09-22T09:00:00Z"
+      },
+      "team": {
+        "id": 67,
+        "name": "Newcastle United FC",
+        "shortName": "Newcastle",
+        "tla": "NEW",
+        "crest": "https://crests.football-data.org/67.png"
+      },
+      "playedMatches": 5,
+      "goals": 4,
+      "assists": 1,
+      "penalties": null
+    },
+    {
+      "player": {
+        "id": 900003,
+        "name": "Test Winger",
+        "firstName": "Test",
+        "lastName": "Winger",
+        "dateOfBirth": "2000-01-01",
+        "nationality": "England",
+        "section": "Offence",
+        "position": null,
+        "shirtNumber": null,
+        "lastUpdated": "2026-09-22T09:00:00Z"
+      },
+      "team": {
+        "id": 57,
+        "name": "Arsenal FC",
+        "shortName": "Arsenal",
+        "tla": "ARS",
+        "crest": "https://crests.football-data.org/57.png"
+      },
+      "playedMatches": 5,
+      "goals": 3,
+      "assists": 2,
+      "penalties": 0
+    }
+  ]
+}

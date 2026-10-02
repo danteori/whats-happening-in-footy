@@ -1,6 +1,9 @@
 pub mod clubs;
 pub mod config;
 pub mod domain;
+pub mod football_data;
+pub mod highlightly;
+pub mod upstream;
 
 use std::path::PathBuf;
 

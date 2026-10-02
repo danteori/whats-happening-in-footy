@@ -1,0 +1,71 @@
+[
+  {
+    "team": {
+      "id": 4063,
+      "name": "Fulham",
+      "logo": "https://example.com/logo/preview/4063.png"
+    },
+    "time": "38",
+    "type": "Yellow Card",
+    "playerId": 200004,
+    "player": "Fulham Player 4"
+  },
+  {
+    "team": {
+      "id": 4066,
+      "name": "Manchester United",
+      "logo": "https://example.com/logo/preview/4066.png"
+    },
+    "time": "52",
+    "type": "Goal",
+    "playerId": 300011,
+    "player": "United Player 11",
+    "assistingPlayerId": 300009,
+    "assist": "United Player 9"
+  },
+  {
+    "team": {
+      "id": 4063,
+      "name": "Fulham",
+      "logo": "https://example.com/logo/preview/4063.png"
+    },
+    "time": "64",
+    "type": "Substitution",
+    "playerId": 200015,
+    "player": "Fulham Player 15",
+    "substituted": "Fulham Player 10"
+  },
+  {
+    "team": {
+      "id": 4063,
+      "name": "Fulham",
+      "logo": "https://example.com/logo/preview/4063.png"
+    },
+    "time": "81",
+    "type": "VAR Goal Cancelled - Offside",
+    "playerId": 200015,
+    "player": "Fulham Player 15"
+  },
+  {
+    "team": {
+      "id": 4063,
+      "name": "Fulham",
+      "logo": "https://example.com/logo/preview/4063.png"
+    },
+    "time": "88",
+    "type": "Penalty",
+    "playerId": 200009,
+    "player": "Fulham Player 9"
+  },
+  {
+    "team": {
+      "id": 4066,
+      "name": "Manchester United",
+      "logo": "https://example.com/logo/preview/4066.png"
+    },
+    "time": "90+3",
+    "type": "Red Card",
+    "playerId": 300005,
+    "player": "United Player 5"
+  }
+]

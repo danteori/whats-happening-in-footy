@@ -1,0 +1,145 @@
+{
+  "data": [
+    {
+      "id": 1180001,
+      "round": "Regular Season - 5",
+      "date": "2026-09-20T13:00:00.000Z",
+      "country": {
+        "code": "GB-ENG",
+        "name": "England",
+        "logo": "https://highlightly.net/soccer/images/countries/GB-ENG.svg"
+      },
+      "homeTeam": {
+        "id": 5044,
+        "name": "Bournemouth",
+        "logo": "https://example.com/logos/team/home.png"
+      },
+      "awayTeam": {
+        "id": 4064,
+        "name": "Liverpool",
+        "logo": "https://example.com/logos/team/away.png"
+      },
+      "league": {
+        "id": 33973,
+        "season": 2026,
+        "name": "Premier League",
+        "logo": "https://example.com/logos/league/33973.png"
+      },
+      "state": {
+        "description": "Finished",
+        "clock": 90,
+        "score": {
+          "current": "0 - 1"
+        }
+      }
+    },
+    {
+      "id": 1180002,
+      "round": "Regular Season - 5",
+      "date": "2026-09-20T13:00:00.000Z",
+      "country": {
+        "code": "GB-ENG",
+        "name": "England",
+        "logo": "https://highlightly.net/soccer/images/countries/GB-ENG.svg"
+      },
+      "homeTeam": {
+        "id": 4341,
+        "name": "Leeds",
+        "logo": "https://example.com/logos/team/home.png"
+      },
+      "awayTeam": {
+        "id": 4354,
+        "name": "Crystal Palace",
+        "logo": "https://example.com/logos/team/away.png"
+      },
+      "league": {
+        "id": 33973,
+        "season": 2026,
+        "name": "Premier League",
+        "logo": "https://example.com/logos/league/33973.png"
+      },
+      "state": {
+        "description": "Finished",
+        "clock": 90,
+        "score": {
+          "current": "0 - 0"
+        }
+      }
+    },
+    {
+      "id": 1180003,
+      "round": "Regular Season - 5",
+      "date": "2026-09-20T13:00:00.000Z",
+      "country": {
+        "code": "GB-ENG",
+        "name": "England",
+        "logo": "https://highlightly.net/soccer/images/countries/GB-ENG.svg"
+      },
+      "homeTeam": {
+        "id": 4065,
+        "name": "Manchester City",
+        "logo": "https://example.com/logos/team/home.png"
+      },
+      "awayTeam": {
+        "id": 4071,
+        "name": "Sunderland",
+        "logo": "https://example.com/logos/team/away.png"
+      },
+      "league": {
+        "id": 33973,
+        "season": 2026,
+        "name": "Premier League",
+        "logo": "https://example.com/logos/league/33973.png"
+      },
+      "state": {
+        "description": "Finished",
+        "clock": 90,
+        "score": {
+          "current": "5 - 3"
+        }
+      }
+    },
+    {
+      "id": 1180004,
+      "round": "Regular Season - 5",
+      "date": "2026-09-20T15:30:00.000Z",
+      "country": {
+        "code": "GB-ENG",
+        "name": "England",
+        "logo": "https://highlightly.net/soccer/images/countries/GB-ENG.svg"
+      },
+      "homeTeam": {
+        "id": 4063,
+        "name": "Fulham",
+        "logo": "https://example.com/logos/team/home.png"
+      },
+      "awayTeam": {
+        "id": 4066,
+        "name": "Manchester United",
+        "logo": "https://example.com/logos/team/away.png"
+      },
+      "league": {
+        "id": 33973,
+        "season": 2026,
+        "name": "Premier League",
+        "logo": "https://example.com/logos/league/33973.png"
+      },
+      "state": {
+        "description": "Finished",
+        "clock": 90,
+        "score": {
+          "current": "1 - 1"
+        }
+      }
+    }
+  ],
+  "pagination": {
+    "totalCount": 4,
+    "offset": 0,
+    "limit": 100
+  },
+  "plan": {
+    "tier": "BASIC",
+    "message": "Some results might be hidden with FREE tier. Check your API coverage for more information: https://rapidapi.com/highlightly-api-highlightly-api-default/api/sport-highlights-api/details"
+  }
+}
