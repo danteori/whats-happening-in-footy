@@ -3,6 +3,7 @@ use std::time::Duration;
 use reqwest::{
     Client, RequestBuilder, StatusCode,
     header::{HeaderMap, HeaderName, HeaderValue},
+    redirect::Policy,
 };
 use serde::de::DeserializeOwned;
 
@@ -40,6 +41,7 @@ pub fn build_client() -> Client {
     Client::builder()
         .timeout(REQUEST_TIMEOUT)
         .user_agent(USER_AGENT)
+        .redirect(Policy::none())
         .build()
         .expect("the HTTP client configuration is valid")
 }

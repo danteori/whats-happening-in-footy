@@ -48,6 +48,7 @@ struct Upstream {
     hits: Arc<Mutex<Vec<String>>>,
     football_data_fails: bool,
     football_data_failing_resource: Option<&'static str>,
+    football_data_redirects: bool,
     highlightly_remaining: Option<u32>,
     highlightly_rate_limited: bool,
 }
@@ -85,6 +86,9 @@ async fn football_data(
     Path(resource): Path<String>,
     headers: HeaderMap,
 ) -> Response {
+    if upstream.football_data_redirects {
+        return (StatusCode::FOUND, [("location", "/elsewhere")]).into_response();
+    }
     if upstream.football_data_fails
         || upstream.football_data_failing_resource == Some(resource.as_str())
     {
@@ -163,6 +167,7 @@ async fn start_upstream(upstream: Upstream) -> SocketAddr {
     let router = Router::new()
         .route("/fd/competitions/PL/{resource}", get(football_data))
         .route("/hl/matches", get(highlightly_matches))
+        .route("/elsewhere", get(|| async { json(FD_MATCHES) }))
         .route("/hl/{resource}/{id}", get(highlightly_match_data))
         .layer(middleware::from_fn_with_state(upstream.clone(), record_hit))
         .with_state(upstream);
@@ -690,4 +695,23 @@ async fn a_remembered_error_affects_only_its_resource() {
     );
     assert_eq!((matches, scorers), (StatusCode::OK, StatusCode::OK));
     assert_eq!(upstream.hits("/fd/competitions/PL/standings"), 1);
+}
+
+#[tokio::test]
+async fn a_redirect_is_not_followed() {
+    let (app, upstream) = Setup {
+        upstream: Upstream {
+            football_data_redirects: true,
+            ..Upstream::default()
+        },
+        ..Setup::default()
+    }
+    .start()
+    .await;
+
+    let (status, body) = get_json(&app, "/api/matches").await;
+
+    assert_eq!(status, StatusCode::BAD_GATEWAY);
+    assert!(body["error"].as_str().unwrap().contains("302"));
+    assert_eq!(upstream.hits("/elsewhere"), 0);
 }
