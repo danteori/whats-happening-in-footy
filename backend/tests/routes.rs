@@ -723,3 +723,21 @@ async fn a_redirect_is_not_followed() {
     assert!(body["error"].as_str().unwrap().contains("302"));
     assert_eq!(upstream.hits("/elsewhere"), 0);
 }
+
+#[tokio::test]
+async fn a_match_id_that_is_not_a_number_answers_404_json() {
+    let (app, upstream) = Setup::default().start().await;
+
+    for uri in ["/api/matches/abc/lineups", "/api/matches/-1/events"] {
+        let (status, body) = get_json(&app, uri).await;
+
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+        assert!(
+            body["error"]
+                .as_str()
+                .unwrap()
+                .starts_with("no Premier League match has the id")
+        );
+    }
+    assert_eq!(upstream.hits_with_prefix("/"), 0);
+}

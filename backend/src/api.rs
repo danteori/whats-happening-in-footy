@@ -52,17 +52,22 @@ async fn scorers(State(service): State<DataService>) -> Result<Json<ScorersBody>
 
 async fn lineups(
     State(service): State<DataService>,
-    Path(id): Path<u64>,
+    Path(id): Path<String>,
 ) -> Result<Json<MatchLineups>, ApiError> {
-    Ok(Json(service.lineups(id).await?))
+    Ok(Json(service.lineups(match_id(&id)?).await?))
 }
 
 async fn events(
     State(service): State<DataService>,
-    Path(id): Path<u64>,
+    Path(id): Path<String>,
 ) -> Result<Json<EventsBody>, ApiError> {
-    let events = service.events(id).await?;
+    let events = service.events(match_id(&id)?).await?;
     Ok(Json(EventsBody { events }))
+}
+
+fn match_id(text: &str) -> Result<u64, ApiError> {
+    text.parse()
+        .map_err(|_| ServiceError::MatchNotFound(text.to_owned()).into())
 }
 
 pub struct ApiError(ServiceError);

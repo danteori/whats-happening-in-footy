@@ -28,7 +28,7 @@ pub enum ServiceError {
     #[error(transparent)]
     Source(#[from] SourceError),
     #[error("no Premier League match has the id {0}")]
-    MatchNotFound(u64),
+    MatchNotFound(String),
     #[error("match {0} is not finished; lineups and events are available after full time")]
     MatchNotFinished(u64),
     #[error(
@@ -167,7 +167,7 @@ impl DataService {
             .iter()
             .find(|fixture| fixture.id == match_id)
             .cloned()
-            .ok_or(ServiceError::MatchNotFound(match_id))?;
+            .ok_or_else(|| ServiceError::MatchNotFound(match_id.to_string()))?;
         if fixture.status != MatchStatus::Finished {
             return Err(ServiceError::MatchNotFinished(match_id));
         }
