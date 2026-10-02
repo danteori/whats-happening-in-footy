@@ -47,6 +47,8 @@ const HL_EMPTY_LINEUPS: &str = r#"{
 struct Upstream {
     hits: Arc<Mutex<Vec<String>>>,
     football_data_fails: bool,
+    highlightly_remaining: Option<u32>,
+    highlightly_rate_limited: bool,
 }
 
 impl Upstream {
@@ -133,7 +135,25 @@ async fn record_hit(State(upstream): State<Upstream>, request: Request, next: Ne
         .lock()
         .unwrap()
         .push(request.uri().path().to_owned());
-    next.run(request).await
+    if !request.uri().path().starts_with("/hl/") {
+        return next.run(request).await;
+    }
+    if upstream.highlightly_rate_limited {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [("content-type", "application/json")],
+            r#"{"message":"Too many requests","statusCode":429}"#,
+        )
+            .into_response();
+    }
+    let mut response = next.run(request).await;
+    if let Some(remaining) = upstream.highlightly_remaining {
+        response.headers_mut().insert(
+            "x-ratelimit-requests-remaining",
+            remaining.to_string().parse().unwrap(),
+        );
+    }
+    response
 }
 
 async fn start_upstream(upstream: Upstream) -> SocketAddr {
@@ -558,4 +578,68 @@ async fn empty_lineups_and_events_are_remembered_for_a_while() {
     }
     assert_eq!(upstream.hits("/hl/lineups/1180002"), 1);
     assert_eq!(upstream.hits("/hl/events/1180002"), 1);
+}
+
+async fn start_with_highlightly_remaining(remaining: u32) -> (Router, Upstream) {
+    Setup {
+        upstream: Upstream {
+            highlightly_remaining: Some(remaining),
+            ..Upstream::default()
+        },
+        ..Setup::default()
+    }
+    .start()
+    .await
+}
+
+#[tokio::test]
+async fn highlightly_calls_continue_while_more_than_10_remain() {
+    let (app, upstream) = start_with_highlightly_remaining(11).await;
+
+    let (status, _) = get_json(&app, &lineups_uri(FINISHED_MATCH)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(upstream.hits_with_prefix("/hl/"), 2);
+}
+
+#[tokio::test]
+async fn highlightly_calls_stop_when_10_or_fewer_remain() {
+    let (app, upstream) = start_with_highlightly_remaining(10).await;
+
+    let (lineups_status, lineups) = get_json(&app, &lineups_uri(FINISHED_MATCH)).await;
+    let (events_status, _) = get_json(&app, &events_uri(OTHER_FINISHED_MATCH_SAME_DAY)).await;
+
+    assert_eq!(lineups_status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(events_status, StatusCode::SERVICE_UNAVAILABLE);
+    let error = lineups["error"].as_str().unwrap();
+    assert!(error.contains("10 requests left"), "{error}");
+    assert!(error.contains("00:00 UTC"), "{error}");
+    assert_eq!(upstream.hits_with_prefix("/hl/"), 1);
+}
+
+#[tokio::test]
+async fn a_highlightly_429_stops_calls_until_the_next_day() {
+    let (app, upstream) = Setup {
+        upstream: Upstream {
+            highlightly_rate_limited: true,
+            ..Upstream::default()
+        },
+        ..Setup::default()
+    }
+    .start()
+    .await;
+
+    let (first_status, first) = get_json(&app, &lineups_uri(FINISHED_MATCH)).await;
+    let (second_status, second) = get_json(&app, &events_uri(FINISHED_MATCH)).await;
+
+    assert_eq!(first_status, StatusCode::BAD_GATEWAY);
+    assert!(first["error"].as_str().unwrap().contains("429"));
+    assert_eq!(second_status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(
+        second["error"]
+            .as_str()
+            .unwrap()
+            .contains("limit is used up")
+    );
+    assert_eq!(upstream.hits_with_prefix("/hl/"), 1);
 }

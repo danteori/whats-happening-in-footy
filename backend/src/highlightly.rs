@@ -1,17 +1,19 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, de::DeserializeOwned};
 
 use crate::{
+    budget::Quota,
     clubs::club_for_name,
     config::ApiKey,
     domain::{EventKind, Goals, LineupPlayer, MatchEvent, MatchLineups, TeamLineup},
-    upstream::{SourceError, fetch_json, with_key},
+    upstream::{Reply, SourceError, send, with_key},
 };
 
 pub const SOURCE_NAME: &str = "Highlightly";
 pub const PREMIER_LEAGUE_ID: &str = "33973";
 const KEY_HEADER: &str = "x-rapidapi-key";
+const REMAINING_HEADER: &str = "x-ratelimit-requests-remaining";
 const PAGE_LIMIT: &str = "100";
 
 #[derive(Debug, Clone)]
@@ -40,44 +42,77 @@ impl HighlightlyClient {
         }
     }
 
-    pub async fn matches_on(&self, date: NaiveDate) -> Result<Vec<HighlightlyMatch>, SourceError> {
+    pub async fn matches_on(&self, date: NaiveDate) -> Quoted<Vec<HighlightlyMatch>> {
         let date = date.format("%Y-%m-%d").to_string();
-        let page: MatchesPage = self
-            .get(
-                "/matches",
-                &[
-                    ("leagueId", PREMIER_LEAGUE_ID),
-                    ("date", &date),
-                    ("timezone", "Etc/UTC"),
-                    ("limit", PAGE_LIMIT),
-                ],
-            )
-            .await?;
-        matches_from(page)
+        self.get(
+            "/matches",
+            &[
+                ("leagueId", PREMIER_LEAGUE_ID),
+                ("date", &date),
+                ("timezone", "Etc/UTC"),
+                ("limit", PAGE_LIMIT),
+            ],
+        )
+        .await
+        .and_then(matches_from)
     }
 
-    pub async fn lineups(&self, match_id: u64) -> Result<MatchLineups, SourceError> {
-        let response: LineupsResponse = self.get(&format!("/lineups/{match_id}"), &[]).await?;
-        lineups_from(response)
+    pub async fn lineups(&self, match_id: u64) -> Quoted<MatchLineups> {
+        self.get(&format!("/lineups/{match_id}"), &[])
+            .await
+            .and_then(lineups_from)
     }
 
-    pub async fn events(&self, match_id: u64) -> Result<Vec<MatchEvent>, SourceError> {
-        let response: EventsResponse = self.get(&format!("/events/{match_id}"), &[]).await?;
-        events_from(response)
+    pub async fn events(&self, match_id: u64) -> Quoted<Vec<MatchEvent>> {
+        self.get(&format!("/events/{match_id}"), &[])
+            .await
+            .and_then(events_from)
     }
 
-    async fn get<T: DeserializeOwned>(
-        &self,
-        path: &str,
-        query: &[(&str, &str)],
-    ) -> Result<T, SourceError> {
+    async fn get<T: DeserializeOwned>(&self, path: &str, query: &[(&str, &str)]) -> Quoted<T> {
         let request = self
             .http
             .get(format!("{}{path}", self.base_url))
             .query(query);
-        let request = with_key(request, KEY_HEADER, &self.api_key, SOURCE_NAME)?;
-        fetch_json(request, SOURCE_NAME).await
+        let reply = match with_key(request, KEY_HEADER, &self.api_key, SOURCE_NAME) {
+            Ok(request) => send(request, SOURCE_NAME).await,
+            Err(error) => Err(error),
+        };
+        match reply {
+            Ok(reply) => Quoted {
+                quota: quota_from(&reply),
+                result: reply.json(SOURCE_NAME),
+            },
+            Err(error) => Quoted {
+                result: Err(error),
+                quota: Quota::Unknown,
+            },
+        }
     }
+}
+
+#[derive(Debug)]
+pub struct Quoted<T> {
+    pub result: Result<T, SourceError>,
+    pub quota: Quota,
+}
+
+impl<T> Quoted<T> {
+    fn and_then<U>(self, next: impl FnOnce(T) -> Result<U, SourceError>) -> Quoted<U> {
+        Quoted {
+            result: self.result.and_then(next),
+            quota: self.quota,
+        }
+    }
+}
+
+fn quota_from(reply: &Reply) -> Quota {
+    if reply.status() == StatusCode::TOO_MANY_REQUESTS {
+        return Quota::UsedUp;
+    }
+    reply
+        .header_number(REMAINING_HEADER)
+        .map_or(Quota::Unknown, Quota::Remaining)
 }
 
 #[derive(Debug, Deserialize)]

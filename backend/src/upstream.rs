@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use reqwest::{
-    Client, RequestBuilder,
-    header::{HeaderName, HeaderValue},
+    Client, RequestBuilder, StatusCode,
+    header::{HeaderMap, HeaderName, HeaderValue},
 };
 use serde::de::DeserializeOwned;
 
@@ -58,24 +58,59 @@ pub fn with_key(
     Ok(request.header(HeaderName::from_static(header), value))
 }
 
-pub async fn fetch_json<T: DeserializeOwned>(
+pub struct Reply {
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Vec<u8>,
+}
+
+impl Reply {
+    pub fn status(&self) -> StatusCode {
+        self.status
+    }
+
+    pub fn header_number(&self, name: &str) -> Option<u32> {
+        self.headers
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|text| text.trim().parse().ok())
+    }
+
+    pub fn json<T: DeserializeOwned>(self, source_name: &'static str) -> Result<T, SourceError> {
+        if !self.status.is_success() {
+            return Err(SourceError::Status {
+                source_name,
+                status: self.status.as_u16(),
+            });
+        }
+        parse_json(&self.body, source_name)
+    }
+}
+
+pub async fn send(
     request: RequestBuilder,
     source_name: &'static str,
-) -> Result<T, SourceError> {
+) -> Result<Reply, SourceError> {
     let request_failed = |error: reqwest::Error| SourceError::Request {
         source_name,
         detail: error.without_url().to_string(),
     };
     let response = request.send().await.map_err(request_failed)?;
     let status = response.status();
-    if !status.is_success() {
-        return Err(SourceError::Status {
-            source_name,
-            status: status.as_u16(),
-        });
-    }
-    let body = response.bytes().await.map_err(request_failed)?;
-    parse_json(&body, source_name)
+    let headers = response.headers().clone();
+    let body = response.bytes().await.map_err(request_failed)?.to_vec();
+    Ok(Reply {
+        status,
+        headers,
+        body,
+    })
+}
+
+pub async fn fetch_json<T: DeserializeOwned>(
+    request: RequestBuilder,
+    source_name: &'static str,
+) -> Result<T, SourceError> {
+    send(request, source_name).await?.json(source_name)
 }
 
 pub fn parse_json<T: DeserializeOwned>(

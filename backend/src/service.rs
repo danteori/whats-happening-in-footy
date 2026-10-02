@@ -15,7 +15,7 @@ use crate::{
     config::{Config, FOOTBALL_DATA_API_KEY, HIGHLIGHTLY_API_KEY},
     domain::{Match, MatchEvent, MatchLineups, MatchStatus, Scorer, TableRow},
     football_data::FootballDataClient,
-    highlightly::HighlightlyClient,
+    highlightly::{HighlightlyClient, Quoted},
     match_link::link_matches,
     table::{TableCheck, compare_tables, compute_table},
     upstream::SourceError,
@@ -132,8 +132,7 @@ impl DataService {
         let highlightly_id = self
             .linked_highlightly_id(&mut data, client, match_id)
             .await?;
-        data.budget.try_spend(today())?;
-        let lineups = client.lineups(highlightly_id).await?;
+        let lineups = spend(&mut data.budget, client.lineups(highlightly_id)).await?;
         let lifetime = lineups_lifetime(&lineups);
         data.lineups
             .insert(match_id, lineups.clone(), lifetime, Instant::now());
@@ -149,8 +148,7 @@ impl DataService {
         let highlightly_id = self
             .linked_highlightly_id(&mut data, client, match_id)
             .await?;
-        data.budget.try_spend(today())?;
-        let events = client.events(highlightly_id).await?;
+        let events = spend(&mut data.budget, client.events(highlightly_id)).await?;
         let lifetime = events_lifetime(&events);
         data.events
             .insert(match_id, events.clone(), lifetime, Instant::now());
@@ -178,8 +176,7 @@ impl DataService {
         let unknown_teams = match data.date_lookups.get(&date, Instant::now()) {
             Some(unknown_teams) => unknown_teams,
             None => {
-                data.budget.try_spend(today())?;
-                let others = client.matches_on(date).await?;
+                let others = spend(&mut data.budget, client.matches_on(date)).await?;
                 let links = link_matches(&matches, &others);
                 data.highlightly_ids.extend(links.pairs);
                 data.date_lookups.insert(
@@ -236,6 +233,16 @@ async fn cached<T: Clone>(
     let ttl = ttl(&value);
     slot.set(value.clone(), Lifetime::For(ttl), Instant::now());
     Ok(value)
+}
+
+async fn spend<T>(
+    budget: &mut DailyBudget,
+    call: impl Future<Output = Quoted<T>>,
+) -> Result<T, ServiceError> {
+    budget.try_spend(today())?;
+    let answer = call.await;
+    budget.observe(answer.quota, today());
+    Ok(answer.result?)
 }
 
 fn log_table_differences(check: &TableCheck) {
