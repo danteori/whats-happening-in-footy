@@ -59,6 +59,11 @@ struct Inner {
     post_match: Mutex<PostMatchData>,
 }
 
+struct LinkedMatch {
+    fixture: Match,
+    highlightly_id: u64,
+}
+
 struct PostMatchData {
     budget: DailyBudget,
     highlightly_ids: HashMap<u64, u64>,
@@ -129,10 +134,8 @@ impl DataService {
         if let Some(lineups) = data.lineups.get(&match_id, Instant::now()) {
             return Ok(lineups);
         }
-        let highlightly_id = self
-            .linked_highlightly_id(&mut data, client, match_id)
-            .await?;
-        let lineups = spend(&mut data.budget, client.lineups(highlightly_id)).await?;
+        let linked = self.linked_match(&mut data, client, match_id).await?;
+        let lineups = spend(&mut data.budget, client.lineups(linked.highlightly_id)).await?;
         let lifetime = lineups_lifetime(&lineups);
         data.lineups
             .insert(match_id, lineups.clone(), lifetime, Instant::now());
@@ -145,32 +148,34 @@ impl DataService {
         if let Some(events) = data.events.get(&match_id, Instant::now()) {
             return Ok(events);
         }
-        let highlightly_id = self
-            .linked_highlightly_id(&mut data, client, match_id)
-            .await?;
-        let events = spend(&mut data.budget, client.events(highlightly_id)).await?;
-        let lifetime = events_lifetime(&events);
+        let linked = self.linked_match(&mut data, client, match_id).await?;
+        let events = spend(&mut data.budget, client.events(linked.highlightly_id)).await?;
+        let lifetime = events_lifetime(&events, &linked.fixture);
         data.events
             .insert(match_id, events.clone(), lifetime, Instant::now());
         Ok(events)
     }
 
-    async fn linked_highlightly_id(
+    async fn linked_match(
         &self,
         data: &mut PostMatchData,
         client: &HighlightlyClient,
         match_id: u64,
-    ) -> Result<u64, ServiceError> {
+    ) -> Result<LinkedMatch, ServiceError> {
         let matches = self.matches().await?;
         let fixture = matches
             .iter()
             .find(|fixture| fixture.id == match_id)
+            .cloned()
             .ok_or(ServiceError::MatchNotFound(match_id))?;
         if fixture.status != MatchStatus::Finished {
             return Err(ServiceError::MatchNotFinished(match_id));
         }
-        if let Some(id) = data.highlightly_ids.get(&match_id) {
-            return Ok(*id);
+        if let Some(&highlightly_id) = data.highlightly_ids.get(&match_id) {
+            return Ok(LinkedMatch {
+                fixture,
+                highlightly_id,
+            });
         }
         let date = fixture.kickoff.date_naive();
         let unknown_teams = match data.date_lookups.get(&date, Instant::now()) {
@@ -188,8 +193,11 @@ impl DataService {
                 links.unknown_teams
             }
         };
-        if let Some(id) = data.highlightly_ids.get(&match_id) {
-            return Ok(*id);
+        if let Some(&highlightly_id) = data.highlightly_ids.get(&match_id) {
+            return Ok(LinkedMatch {
+                fixture,
+                highlightly_id,
+            });
         }
         Err(match unknown_teams.into_iter().next() {
             Some(unknown) => SourceError::from(unknown).into(),

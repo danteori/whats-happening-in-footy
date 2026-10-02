@@ -83,11 +83,16 @@ pub fn lineups_lifetime(lineups: &MatchLineups) -> Lifetime {
     }
 }
 
-pub fn events_lifetime(events: &[MatchEvent]) -> Lifetime {
-    if events.is_empty() {
-        Lifetime::For(UNCONFIRMED_TTL)
-    } else {
+pub fn events_lifetime(events: &[MatchEvent], fixture: &Match) -> Lifetime {
+    let goal_events = events.iter().filter(|event| event.kind.is_goal()).count();
+    let final_goals = fixture
+        .score
+        .full_time
+        .map(|goals| (goals.home + goals.away) as usize);
+    if !events.is_empty() && final_goals == Some(goal_events) {
         Lifetime::Forever
+    } else {
+        Lifetime::For(UNCONFIRMED_TTL)
     }
 }
 
@@ -119,7 +124,7 @@ mod tests {
     use super::*;
     use crate::{
         clubs::club_for_name,
-        domain::{Score, TeamLineup},
+        domain::{EventKind, Goals, Score, TeamLineup},
     };
 
     fn lineup_with_rows(rows: usize) -> TeamLineup {
@@ -152,9 +157,66 @@ mod tests {
         assert_eq!(UNCONFIRMED_TTL, Duration::from_secs(30 * 60));
     }
 
+    fn finished(home: u32, away: u32) -> Match {
+        let mut fixture = fixture(MatchStatus::Finished, saturday(11, 30));
+        fixture.score.full_time = Some(Goals { home, away });
+        fixture
+    }
+
+    fn event(kind: EventKind) -> MatchEvent {
+        MatchEvent {
+            team: club_for_name("Arsenal").unwrap(),
+            minute: 10,
+            added_time: None,
+            kind,
+            player: None,
+            assist: None,
+            substituted: None,
+        }
+    }
+
     #[test]
     fn empty_events_expire_after_30_minutes() {
-        assert_eq!(events_lifetime(&[]), Lifetime::For(UNCONFIRMED_TTL));
+        assert_eq!(
+            events_lifetime(&[], &finished(0, 0)),
+            Lifetime::For(UNCONFIRMED_TTL)
+        );
+    }
+
+    #[test]
+    fn events_never_expire_when_the_goals_match_the_score() {
+        let events = [
+            event(EventKind::Goal),
+            event(EventKind::YellowCard),
+            event(EventKind::OwnGoal),
+            event(EventKind::PenaltyGoal),
+            event(EventKind::MissedPenalty),
+            event(EventKind::VarGoalCancelled),
+        ];
+
+        assert_eq!(events_lifetime(&events, &finished(2, 1)), Lifetime::Forever);
+        assert_eq!(events_lifetime(&events, &finished(0, 3)), Lifetime::Forever);
+    }
+
+    #[test]
+    fn events_expire_after_30_minutes_when_a_goal_is_missing() {
+        let events = [event(EventKind::Goal), event(EventKind::Substitution)];
+
+        assert_eq!(
+            events_lifetime(&events, &finished(1, 1)),
+            Lifetime::For(UNCONFIRMED_TTL)
+        );
+    }
+
+    #[test]
+    fn events_expire_after_30_minutes_without_a_final_score() {
+        let events = [event(EventKind::Substitution)];
+        let no_score = fixture(MatchStatus::Finished, saturday(11, 30));
+
+        assert_eq!(
+            events_lifetime(&events, &no_score),
+            Lifetime::For(UNCONFIRMED_TTL)
+        );
     }
 
     fn fixture(status: MatchStatus, kickoff: DateTime<Utc>) -> Match {

@@ -129,3 +129,9 @@ pub enum EventKind {
     VarPenaltyCancelled,
     Other,
 }
+
+impl EventKind {
+    pub fn is_goal(self) -> bool {
+        matches!(self, Self::Goal | Self::OwnGoal | Self::PenaltyGoal)
+    }
+}
