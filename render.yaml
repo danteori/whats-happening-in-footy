@@ -13,3 +13,7 @@ services:
       # see docs/tailnet.md. Without it the site runs without joining the tailnet.
       - key: TS_AUTHKEY
         sync: false
+      - key: FOOTBALL_DATA_API_KEY
+        sync: false
+      - key: HIGHLIGHTLY_API_KEY
+        sync: false

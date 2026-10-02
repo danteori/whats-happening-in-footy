@@ -1,0 +1,220 @@
+{
+  "homeTeam": {
+    "id": 4063,
+    "logo": "https://example.com/logo/preview/4063.png",
+    "formation": "4-2-3-1",
+    "name": "Fulham",
+    "substitutes": [
+      {
+        "id": 228235,
+        "name": "Fulham Player 12",
+        "number": 12,
+        "position": "Goalkeeper"
+      },
+      {
+        "id": 626660,
+        "name": "Fulham Player 13",
+        "number": 13,
+        "position": "Defender"
+      },
+      {
+        "id": 830294,
+        "name": "Fulham Player 14",
+        "number": 14,
+        "position": "Midfielder"
+      },
+      {
+        "id": 577103,
+        "name": "Fulham Player 15",
+        "number": 15,
+        "position": "Forward"
+      }
+    ],
+    "initialLineup": [
+      [
+        {
+          "id": 923899,
+          "name": "Fulham Player 1",
+          "number": 1,
+          "position": "Goalkeeper"
+        }
+      ],
+      [
+        {
+          "id": 227533,
+          "name": "Fulham Player 2",
+          "number": 2,
+          "position": "Defender"
+        },
+        {
+          "id": 625958,
+          "name": "Fulham Player 3",
+          "number": 3,
+          "position": "Defender"
+        },
+        {
+          "id": 556255,
+          "name": "Fulham Player 4",
+          "number": 4,
+          "position": "Defender"
+        },
+        {
+          "id": 759889,
+          "name": "Fulham Player 5",
+          "number": 5,
+          "position": "Defender"
+        }
+      ],
+      [
+        {
+          "id": 258314,
+          "name": "Fulham Player 6",
+          "number": 6,
+          "position": "Midfielder"
+        },
+        {
+          "id": 461948,
+          "name": "Fulham Player 7",
+          "number": 7,
+          "position": "Midfielder"
+        }
+      ],
+      [
+        {
+          "id": 392245,
+          "name": "Fulham Player 8",
+          "number": 8,
+          "position": "Midfielder"
+        },
+        {
+          "id": 595879,
+          "name": "Fulham Player 9",
+          "number": 9,
+          "position": "Midfielder"
+        },
+        {
+          "id": 994304,
+          "name": "Fulham Player 10",
+          "number": 10,
+          "position": "Midfielder"
+        }
+      ],
+      [
+        {
+          "id": 741113,
+          "name": "Fulham Player 11",
+          "number": 11,
+          "position": "Forward"
+        }
+      ]
+    ]
+  },
+  "awayTeam": {
+    "id": 4066,
+    "logo": "https://example.com/logo/preview/4066.png",
+    "formation": "3-4-3",
+    "name": "Manchester United",
+    "substitutes": [
+      {
+        "id": 861727,
+        "name": "United Player 12",
+        "number": 12,
+        "position": "Goalkeeper"
+      },
+      {
+        "id": 816977,
+        "name": "United Player 13",
+        "number": 13,
+        "position": "Defender"
+      },
+      {
+        "id": 563786,
+        "name": "United Player 14",
+        "number": 14,
+        "position": "Midfielder"
+      },
+      {
+        "id": 494083,
+        "name": "United Player 15",
+        "number": 15,
+        "position": "Forward"
+      }
+    ],
+    "initialLineup": [
+      [
+        {
+          "id": 409007,
+          "name": "United Player 1",
+          "number": 1,
+          "position": "Goalkeeper"
+        }
+      ],
+      [
+        {
+          "id": 144513,
+          "name": "United Player 2",
+          "number": 2,
+          "position": "Defender"
+        },
+        {
+          "id": 542938,
+          "name": "United Player 3",
+          "number": 3,
+          "position": "Defender"
+        },
+        {
+          "id": 746572,
+          "name": "United Player 4",
+          "number": 4,
+          "position": "Defender"
+        }
+      ],
+      [
+        {
+          "id": 244997,
+          "name": "United Player 5",
+          "number": 5,
+          "position": "Midfielder"
+        },
+        {
+          "id": 448631,
+          "name": "United Player 6",
+          "number": 6,
+          "position": "Midfielder"
+        },
+        {
+          "id": 378928,
+          "name": "United Player 7",
+          "number": 7,
+          "position": "Midfielder"
+        },
+        {
+          "id": 125737,
+          "name": "United Player 8",
+          "number": 8,
+          "position": "Midfielder"
+        }
+      ],
+      [
+        {
+          "id": 980987,
+          "name": "United Player 9",
+          "number": 9,
+          "position": "Forward"
+        },
+        {
+          "id": 727796,
+          "name": "United Player 10",
+          "number": 10,
+          "position": "Forward"
+        },
+        {
+          "id": 214918,
+          "name": "United Player 11",
+          "number": 11,
+          "position": "Forward"
+        }
+      ]
+    ]
+  }
+}
