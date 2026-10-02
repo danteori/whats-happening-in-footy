@@ -174,7 +174,8 @@ A good events response:
 
 The first lineups or events request for a match date uses 2 of the 100 daily Highlightly
 requests: one to find the match, and one for the data. The other kind of data for the same
-match uses 1 more. After that, requests for that match use none.
+match uses 1 more. After that, requests for that match use none, while the cache keeps the data
+(see "Cache rules").
 
 ### Errors
 
@@ -189,8 +190,11 @@ the API's own message after the status.
 | 502 | `football-data.org answered with HTTP 429: ...` | Too many requests in one minute. Wait one minute. |
 | 502 | `the request to Highlightly failed: ...` | The API did not answer. Look at <https://status.highlightly.net>, then try again later. |
 | 502 | `the team name "..." matches no Premier League 2026/27 club` | A source uses a team name that the app does not know. Add it to `backend/src/clubs.rs`. |
-| 502 | `Highlightly has no Premier League match that links to match ...` | See "Facts that only a live check can confirm" below. |
+| 502 | `... answered with HTTP 302` (or another 3xx) | The API sent a redirect. The app does not follow redirects, so that a key never goes to another host. Check the base URL. |
+| 502 | `Highlightly has no Premier League match that links to match ...` | See "Facts that only a live check can confirm" below. The app remembers this answer for 6 hours. |
 | 503 | `the app used its daily budget of 90 Highlightly requests; ...` | Wait until 00:00 UTC. Cached lineups and events still work. |
+| 503 | `Highlightly reports 10 requests left today; ...` | The app keeps the last 10 Highlightly requests in reserve. Wait until 00:00 UTC. |
+| 503 | `Highlightly reports that the daily request limit is used up; ...` | Highlightly answered 429. Wait until 00:00 UTC. |
 | 409 | `match ... is not finished; lineups and events are available after full time` | Use a finished match. |
 | 404 | `no Premier League match has the id ...` | Use an `id` from `/api/matches`. |
 
@@ -225,30 +229,44 @@ find in a GitHub issue.
    Check also that `status` changes to `in_play` and `paused` during the match.
 5. **When do Highlightly lineups and events appear?** The docs say that Highlightly reads
    lineups from 40 minutes before kickoff until 120 minutes after, and events once a minute.
-   The app asks only after football-data.org says `finished`. If a lineups response is empty,
-   the app does not keep it, and the next request asks again.
+   The app asks only after football-data.org says `finished`. If a lineups or events response
+   is empty, the app keeps it for 30 minutes and then asks again. The same applies to events
+   with fewer goals than the final score.
 6. **What does `substituted` mean in a Highlightly substitution event?** The docs do not say
    which player comes on and which goes off. Look at one real substitution, and write the
    answer in the issue.
+7. **Does Highlightly send `x-ratelimit-requests-remaining` on a direct key?** The docs say
+   that each response has it. The app reads it to stop at 10 requests left. To check, add
+   `-i` to the `curl` command in item 1 and look at the response headers. If the header is
+   missing, only the app's own count of 90 calls protects the daily limit, and that count
+   starts again at 0 after each Render restart.
 
 ## Request limits
 
 | Source | Limit | How the app stays inside it |
 | --- | --- | --- |
 | football-data.org | 10 requests a minute | The cache keeps each response for up to 10 minutes. During a match it keeps them for 60 seconds. One page view makes at most 3 requests: matches, table, and scorers. |
-| Highlightly | 100 requests a day, reset at 00:00 UTC | The app counts its calls in each UTC day and stops at 90. It asks only once for each finished match. |
+| Highlightly | 100 requests a day, reset at 00:00 UTC | The app reads `x-ratelimit-requests-remaining` from each response and stops when 10 or fewer are left. It stops also after a 429. As a second limit, it counts its own calls in each UTC day and stops at 90. It asks only once for each finished match, and it remembers empty answers. |
 
 ## Cache rules
 
 The cache is in memory. Render stops the free service after 15 idle minutes, and the cache and
-the request count are then lost. The first request after a wake-up fetches the data again. A
-later workstream moves the cache to the database.
+the app's own request count are then lost. The first request after a wake-up fetches the data
+again. Highlightly's own count of remaining requests is not lost, so the app still stops at 10
+requests left. A later workstream moves the cache to the database.
 
 - football-data.org matches, table, and scorers: 60 seconds while a match is in play or just
   after its kickoff time, else until the next kickoff, and at most 10 minutes.
-- Highlightly lineups and events of a finished match: no expiry. Empty lineups or events are not
-  kept.
+- football-data.org errors: 60 seconds for each of matches, table, and scorers. In that time the
+  route answers 502 and does not call football-data.org.
+- Highlightly match list for one UTC date: 6 hours, also when it links no match. The links that
+  it finds never expire.
+- Highlightly lineups of a finished match: no expiry when both teams have a lineup, else 30
+  minutes.
+- Highlightly events of a finished match: no expiry when the number of goal events (goal, own
+  goal, penalty goal) equals the total goals of the final score, else 30 minutes.
 - The app does not ask Highlightly about a match that is not finished.
+- Cached lineups and events answer at once, also while another request waits for Highlightly.
 
 ## Terms that the app must follow
 
