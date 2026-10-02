@@ -176,13 +176,15 @@ match uses 1 more. After that, requests for that match use none.
 
 ### Errors
 
-Each error is JSON with an `error` text.
+Each error is JSON with an `error` text. When an API answers with an error, the text includes
+the API's own message after the status.
 
 | Status | Example `error` | What to do |
 | --- | --- | --- |
 | 503 | `set FOOTBALL_DATA_API_KEY in the server environment to use this route` | Set the variable (step 3 or 4). The body also has `missing_variables`. |
-| 502 | `football-data.org answered with HTTP 403` | The key is wrong, or the free plan does not include this data. Check the key. |
-| 502 | `football-data.org answered with HTTP 429` | Too many requests in one minute. Wait one minute. |
+| 502 | `football-data.org answered with HTTP 400: Your API token is invalid.` | The key is wrong. Copy it again from the football-data.org e-mail. |
+| 502 | `football-data.org answered with HTTP 403: ...` | The free plan does not include this data. |
+| 502 | `football-data.org answered with HTTP 429: ...` | Too many requests in one minute. Wait one minute. |
 | 502 | `the request to Highlightly failed: ...` | The API did not answer. Look at <https://status.highlightly.net>, then try again later. |
 | 502 | `the team name "..." matches no Premier League 2026/27 club` | A source uses a team name that the app does not know. Add it to `backend/src/clubs.rs`. |
 | 502 | `Highlightly has no Premier League match that links to match ...` | See "Facts that only a live check can confirm" below. |

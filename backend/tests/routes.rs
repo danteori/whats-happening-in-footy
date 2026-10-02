@@ -95,7 +95,12 @@ async fn football_data(
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     if !has_key(&headers, "x-auth-token", FOOTBALL_DATA_KEY) {
-        return StatusCode::FORBIDDEN.into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            [("content-type", "application/json")],
+            r#"{"message":"Your API token is invalid.","errorCode":400}"#,
+        )
+            .into_response();
     }
     match resource.as_str() {
         "matches" => json(FD_MATCHES),
@@ -353,7 +358,10 @@ async fn rejected_key_answers_502() {
     let (status, body) = get_text(&app, "/api/matches").await;
 
     assert_eq!(status, StatusCode::BAD_GATEWAY);
-    assert!(body.contains("403"));
+    assert!(
+        body.contains("HTTP 400: Your API token is invalid."),
+        "{body}"
+    );
     assert!(!body.contains("wrong-key"));
 }
 

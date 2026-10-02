@@ -5,10 +5,11 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     redirect::Policy,
 };
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, de::DeserializeOwned};
 
 use crate::{clubs::UnknownTeam, config::ApiKey};
 
+const MESSAGE_LIMIT: usize = 200;
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 pub const USER_AGENT: &str = concat!(
     "whats-happening-in-footy/",
@@ -23,10 +24,11 @@ pub enum SourceError {
         source_name: &'static str,
         detail: String,
     },
-    #[error("{source_name} answered with HTTP {status}")]
+    #[error("{source_name} answered with HTTP {status}{}", message_suffix(.message))]
     Status {
         source_name: &'static str,
         status: u16,
+        message: Option<String>,
     },
     #[error("{source_name} sent data in an unexpected shape: {detail}")]
     Shape {
@@ -83,6 +85,7 @@ impl Reply {
             return Err(SourceError::Status {
                 source_name,
                 status: self.status.as_u16(),
+                message: upstream_message(&self.body),
             });
         }
         parse_json(&self.body, source_name)
@@ -115,6 +118,23 @@ pub async fn fetch_json<T: DeserializeOwned>(
     send(request, source_name).await?.json(source_name)
 }
 
+fn upstream_message(body: &[u8]) -> Option<String> {
+    #[derive(Deserialize)]
+    struct ErrorBody {
+        message: String,
+    }
+    let message = serde_json::from_slice::<ErrorBody>(body).ok()?.message;
+    let one_line = message.split_whitespace().collect::<Vec<_>>().join(" ");
+    Some(one_line.chars().take(MESSAGE_LIMIT).collect()).filter(|text: &String| !text.is_empty())
+}
+
+fn message_suffix(message: &Option<String>) -> String {
+    message
+        .as_ref()
+        .map(|text| format!(": {text}"))
+        .unwrap_or_default()
+}
+
 pub fn parse_json<T: DeserializeOwned>(
     body: &[u8],
     source_name: &'static str,
@@ -123,4 +143,72 @@ pub fn parse_json<T: DeserializeOwned>(
         source_name,
         detail: error.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reply(status: u16, body: &str) -> Reply {
+        Reply {
+            status: StatusCode::from_u16(status).unwrap(),
+            headers: HeaderMap::new(),
+            body: body.as_bytes().to_vec(),
+        }
+    }
+
+    fn error_text(reply: Reply) -> String {
+        reply
+            .json::<serde_json::Value>("football-data.org")
+            .unwrap_err()
+            .to_string()
+    }
+
+    #[test]
+    fn an_error_holds_the_upstream_message() {
+        let text = error_text(reply(
+            400,
+            r#"{"message":"Your API token is invalid.","errorCode":400}"#,
+        ));
+
+        assert_eq!(
+            text,
+            "football-data.org answered with HTTP 400: Your API token is invalid."
+        );
+    }
+
+    #[test]
+    fn an_error_without_a_message_holds_only_the_status() {
+        for body in ["", "<html>Bad Gateway</html>", r#"{"message":"   "}"#] {
+            assert_eq!(
+                error_text(reply(502, body)),
+                "football-data.org answered with HTTP 502"
+            );
+        }
+    }
+
+    #[test]
+    fn a_long_message_is_cut_to_one_short_line() {
+        let long = format!(r#"{{"message":"first\nsecond {}"}}"#, "x".repeat(500));
+
+        let text = error_text(reply(403, &long));
+
+        assert!(text.contains("HTTP 403: first second x"));
+        assert!(!text.contains('\n'));
+        assert!(text.len() < MESSAGE_LIMIT + 50);
+    }
+
+    #[test]
+    fn a_number_header_is_read() {
+        let mut answer = reply(200, "{}");
+        answer
+            .headers
+            .insert("x-ratelimit-requests-remaining", " 42 ".parse().unwrap());
+
+        assert_eq!(
+            answer.header_number("x-ratelimit-requests-remaining"),
+            Some(42)
+        );
+        assert_eq!(answer.header_number("missing"), None);
+    }
 }
