@@ -51,15 +51,17 @@ Browser ──▶ backend (Render) ──cache──▶ football-data.org   (mat
    The Highlightly dashboard can use other names for these screens. The important parts are:
    the Football API, the BASIC plan, and a key from highlightly.net.
 3. **Give the keys to Render.** In the Render dashboard, open the service, go to
-   **Environment**, and set these two variables. `render.yaml` already declares them with
-   `sync: false`, so Render asks for the values and never reads them from the repo.
+   **Environment**, and add these two variables. `render.yaml` declares them with
+   `sync: false`, so the values never come from the repo. Render does not ask for them on an
+   existing service, so you must add them yourself.
 
    | Variable | Value |
    | --- | --- |
    | `FOOTBALL_DATA_API_KEY` | the football-data.org key |
    | `HIGHLIGHTLY_API_KEY` | the Highlightly key |
 
-   Click **Save**. Render then deploys the service again with the keys.
+   Save with the option that also deploys, for example **Save and deploy**. With **Save only**,
+   the service gets the keys only at the next deploy.
 4. **Optional: use the keys when you run the app on your computer.** Do not write the keys in a
    file in the repo, and do not type them in a command, because the shell history keeps
    commands. Read each key into the shell instead. Then start the app from the same shell.
